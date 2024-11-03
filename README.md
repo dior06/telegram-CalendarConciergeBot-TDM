@@ -29,4 +29,4 @@ Telegram-бот для планирования встреч с интеграц
 
 ### Ссылка на проект в телеграм
 
-https://t.me/@CalendarConciergeBot
+https://t.me/CalendarConciergeBot
