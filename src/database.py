@@ -1,191 +1,217 @@
 import sqlite3
-import typing as tp
-from datetime import datetime, timedelta
+from sqlite3 import Error
+from typing import List, Tuple
+import threading
 
+# Используем thread-local для хранения соединений с БД в каждом потоке
+local = threading.local()
 
 class DataBaseHandler:
-    def __init__(self, db_name: str = "calendar_concierge_bot_tdm.db") -> None:
-        self.conn = sqlite3.connect(db_name)
-        self.create_tables()
+    def __init__(self, db_file='meetings.db'):
+        """Инициализация подключения к базе данных."""
+        self.db_file = db_file
+        self.create_tables()  # Создаем таблицы при инициализации
 
-    def create_tables(self) -> None:
-        cursor = self.conn.cursor()
+    def create_connection(self):
+        """Создание подключения к базе данных SQLite для текущего потока."""
+        if not hasattr(local, 'db_connection'):
+            try:
+                local.db_connection = sqlite3.connect(self.db_file, check_same_thread=False)  # разрешаем использование в разных потоках
+                local.db_connection.row_factory = sqlite3.Row  # чтобы возвращаемые строки были как словари
+                print(f"Подключение к базе данных установлено: {self.db_file}")
+            except Error as e:
+                print(f"Ошибка подключения к базе данных: {e}")
+                raise
+        return local.db_connection
 
-        # table of users
-        cursor.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            )
-        '''
-        )
+    def create_tables(self):
+        """Создание необходимых таблиц, если они не существуют."""
+        create_meetings_table = """
+        CREATE TABLE IF NOT EXISTS meetings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL
+        );
+        """
 
-        # table of meetings
-        cursor.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS meetings (
-                meeting_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT,
-                start_time TIMESTAMP NOT NULL,
-                end_time TIMESTAMP NOT NULL,
-                status TEXT DEFAULT 'scheduled',
-            )
-        '''
-        )
+        create_users_table = """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            first_name TEXT,
+            last_name TEXT,
+            username TEXT
+        );
+        """
 
-        # table of meeting participants
-        cursor.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS meeting_participants (
-                meeting_id INTEGER,
-                user_id INTEGER,
-                PRIMARY KEY (meeting_id, user_id),
-                FOREIGN KEY (meeting_id) REFERENCES meetings(meeting_id),
-                FOREIGN KEY (user_id) REFERENCES users(user_id),
-            )
-        '''
-        )
+        create_participants_table = """
+        CREATE TABLE IF NOT EXISTS meeting_participants (
+            meeting_id INTEGER,
+            user_id INTEGER,
+            FOREIGN KEY (meeting_id) REFERENCES meetings (id),
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            PRIMARY KEY (meeting_id, user_id)
+        );
+        """
 
-        # table of statistics
-        cursor.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS statistics (
-                stat_id INTEGET PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                week_start_date DATE,
-                meeting_count INTREGER,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        '''
-        )
+        create_statistics_table = """
+        CREATE TABLE IF NOT EXISTS statistics (
+            user_id INTEGER,
+            meetings_created INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        );
+        """
 
-        self.conn.commit()
+        try:
+            conn = self.create_connection()
+            cursor = conn.cursor()
+            cursor.execute(create_meetings_table)
+            cursor.execute(create_users_table)
+            cursor.execute(create_participants_table)
+            cursor.execute(create_statistics_table)
+            conn.commit()
+            print("Таблицы успешно созданы или уже существуют.")
+        except Error as e:
+            print(f"Ошибка при создании таблиц: {e}")
 
-    # adding new user to the data base in case if he is not there
-    def add_user(self, user_id: int, username: str, first_name: str, last_name: str) -> None:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            '''
-            INSERT OR IGNORE INTO users (user_id, username, first_name, last_name)
-            VALUES (?, ?, ?, ?)
-        ''',
-            (user_id, username, first_name, last_name),
-        )
+    def add_user(self, user_id: int, first_name: str, last_name: str, username: str):
+        """Добавление пользователя в таблицу users."""
+        try:
+            conn = self.create_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO users (user_id, first_name, last_name, username)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, first_name, last_name, username))
+            conn.commit()
+        except Error as e:
+            print(f"Ошибка при добавлении пользователя: {e}")
 
-        self.conn.commit()
+    def get_user(self, user_id: int) -> Tuple[int, str, str, str]:
+        """Получение данных пользователя по его ID."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+        return cursor.fetchone()
 
-    # creating meeting and connecting it with meeting participants
-    def create_meeting(
-        self, title: str, description: str, start_time: str, end_time: str, participants: tp.List[int]
-    ) -> int | None:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            '''
-            INSERT INTO meetings (title, desctiption, start_time, end_time)
-            VALUES (?, ?, ?, ?)
-        ''',
-            (title, description, start_time, end_time),
-        )
+    def create_meeting(self, title: str, description: str, start_time: str, end_time: str, participants: List[int]) -> int:
+        """Создание новой встречи и добавление её в таблицу meetings."""
+        try:
+            conn = self.create_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO meetings (title, description, start_time, end_time)
+                VALUES (?, ?, ?, ?)
+            """, (title, description, start_time, end_time))
+            meeting_id = cursor.lastrowid
+            conn.commit()
 
-        meeting_id = cursor.lastrowid
+            # Добавление участников в таблицу meeting_participants
+            for user_id in participants:
+                cursor.execute("""
+                    INSERT INTO meeting_participants (meeting_id, user_id)
+                    VALUES (?, ?)
+                """, (meeting_id, user_id))
+            conn.commit()
+            return meeting_id
+        except Error as e:
+            print(f"Ошибка при создании встречи: {e}")
+            return None
 
-        for user_id in participants:
-            cursor.execute(
-                '''
-                INSERT INTO meeting_participants (meeting_id, user_id)
-                VALUES (?, ?)
-            ''',
-                (meeting_id, user_id),
-            )
+    def get_meeting(self, meeting_id: int) -> Tuple[int, str, str, str, str]:
+        """Получение данных о встрече по ID."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM meetings WHERE id=?", (meeting_id,))
+        return cursor.fetchone()
 
-        self.conn.commit()
-        return meeting_id
-
-    # getting list of meetings for current user
-    def get_user_meetings(self, user_id: int) -> list:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            '''
-            SELECT m.title, m.description, m.start_time, m.end_time, m.status
+    def get_meetings_for_user(self, user_id: int) -> List[Tuple[int, str, str, str, str]]:
+        """Получение списка встреч для конкретного пользователя."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT m.id, m.title, m.description, m.start_time, m.end_time
             FROM meetings m
-            JOING meeting_participants mp ON m.meeting_id = mp.meeting_id
-            WHERE mp.user_id = ?
-            ORDER BY m.start_time
-        ''',
-            (user_id,),
-        )
-
+            JOIN meeting_participants mp ON m.id = mp.meeting_id
+            WHERE mp.user_id=?
+        """, (user_id,))
         return cursor.fetchall()
 
-    # updating status for current meeting
-    def update_meeting_status(self, meeting_id: int, new_status: str) -> None:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            '''
-            UPDATE meetings
-            SET status = ?
-            WHERE meeting_id = ?
-        ''',
-            (meeting_id, new_status),
-        )
+    def get_participants_for_meeting(self, meeting_id: int) -> List[Tuple[int, str, str, str]]:
+        """Получение списка участников для конкретной встречи."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT u.user_id, u.first_name, u.last_name, u.username
+            FROM users u
+            JOIN meeting_participants mp ON u.user_id = mp.user_id
+            WHERE mp.meeting_id=?
+        """, (meeting_id,))
+        return cursor.fetchall()
 
-        self.conn.commit()
+    def update_statistics(self, user_id: int):
+        """Обновление статистики о количестве встреч, созданных пользователем."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO statistics (user_id, meetings_created)
+            VALUES (?, COALESCE((SELECT meetings_created FROM statistics WHERE user_id=?), 0) + 1)
+        """, (user_id, user_id))
+        conn.commit()
 
-    # collecting and updating statistics
-    def collect_statistics(self) -> None:
-        cursor = self.conn.cursor()
-
-        today: datetime = datetime.today()
-        start_of_the_week: datetime = today - timedelta(days=today.weekday())
-        start_of_the_week_str = start_of_the_week.strftime('%Y-%m-%d')
-
-        cursor.execute(
-            '''
-            SELECT mp.user_id, COUNT(m.meeting_id)
-            FROM meetings m
-            JOIN meeting_participants mp ON m.meeting_id = mp.meeting_id
-            WHERTE DATE(m.start_time) >= ?
-            GROUP BY mp.user_id
-        ''',
-            (start_of_the_week_str,),
-        )
-        statistics = cursor.fetchall()
-
-        for user_id, meeting_count in statistics:
-            cursor.execute(
-                '''
-                INSERT OR REPLACE INTO statistics (user_id, week_start_date, meeting_count)
-                VALUES (?, ?, ?)
-            ''',
-                (user_id, start_of_the_week, meeting_count),
-            )
-
-        self.conn.commit()
-
-    # getting meeting statistics for current user
-    def get_user_statistics(self, user_id: int):
-        cursor = self.conn.cursor()
-
-        today = datetime.today()
-        start_of_the_week = today - timedelta(days=today.weekday())
-        start_of_the_week_str = start_of_the_week.strftime('%Y-%m-%d')
-
-        cursor.execute(
-            '''
-            SELECT meeting_count
-            FROM statistics
-            WHERE user_id = ? AND week_start_date = ?
-        ''',
-            (user_id, start_of_the_week_str),
-        )
-
+    def get_user_statistics(self, user_id: int) -> int:
+        """Получение статистики по количеству встреч, созданных пользователем."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT meetings_created FROM statistics WHERE user_id=?", (user_id,))
         result = cursor.fetchone()
         return result[0] if result else 0
 
-    def close_database(self) -> None:
-        self.conn.close()
+    def get_table_content(self, table_name: str) -> List[Tuple]:
+        """Получение всех данных из указанной таблицы."""
+        conn = self.create_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT * FROM {table_name}")
+        return cursor.fetchall()
+
+    def close_connection(self):
+        """Закрытие подключения к базе данных."""
+        if hasattr(local, 'db_connection'):
+            local.db_connection.close()
+            print("Подключение к базе данных закрыто.")
+
+
+# Пример использования:
+if __name__ == "__main__":
+    db_handler = DataBaseHandler()
+
+    # Пример добавления пользователя
+    db_handler.add_user(12345, "Иван", "Иванов", "ivan_ivanov")
+    
+    # Пример создания встречи
+    meeting_id = db_handler.create_meeting(
+        title="Совещание",
+        description="Обсуждение важных вопросов",
+        start_time="2024-12-10 14:00",
+        end_time="2024-12-10 15:00",
+        participants=[12345]  # участник с ID 12345
+    )
+
+    # Пример обновления статистики
+    db_handler.update_statistics(12345)
+
+    # Пример получения статистики
+    print(f"Встречи создано: {db_handler.get_user_statistics(12345)}")
+
+    # Пример получения всех встреч для пользователя
+    meetings = db_handler.get_meetings_for_user(12345)
+    print("Встречи пользователя:", meetings)
+
+    # Пример получения всех участников встречи
+    participants = db_handler.get_participants_for_meeting(meeting_id)
+    print("Участники встречи:", participants)
+
+    # Закрытие подключения
+    db_handler.close_connection()
