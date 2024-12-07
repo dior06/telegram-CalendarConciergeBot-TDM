@@ -3,21 +3,18 @@ from sqlite3 import Error
 from typing import List, Tuple
 import threading
 
-# Используем thread-local для хранения соединений с БД в каждом потоке
 local = threading.local()
 
 class DataBaseHandler:
     def __init__(self, db_file='meetings.db'):
-        """Инициализация подключения к базе данных."""
         self.db_file = db_file
-        self.create_tables()  # Создаем таблицы при инициализации
+        self.create_tables()  
 
     def create_connection(self):
-        """Создание подключения к базе данных SQLite для текущего потока."""
         if not hasattr(local, 'db_connection'):
             try:
-                local.db_connection = sqlite3.connect(self.db_file, check_same_thread=False)  # разрешаем использование в разных потоках
-                local.db_connection.row_factory = sqlite3.Row  # чтобы возвращаемые строки были как словари
+                local.db_connection = sqlite3.connect(self.db_file, check_same_thread=False)  
+                local.db_connection.row_factory = sqlite3.Row  
                 print(f"Подключение к базе данных установлено: {self.db_file}")
             except Error as e:
                 print(f"Ошибка подключения к базе данных: {e}")
@@ -25,7 +22,6 @@ class DataBaseHandler:
         return local.db_connection
 
     def create_tables(self):
-        """Создание необходимых таблиц, если они не существуют."""
         create_meetings_table = """
         CREATE TABLE IF NOT EXISTS meetings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +73,6 @@ class DataBaseHandler:
             print(f"Ошибка при создании таблиц: {e}")
 
     def add_user(self, user_id: int, first_name: str, last_name: str, username: str):
-        """Добавление пользователя в таблицу users."""
         try:
             conn = self.create_connection()
             cursor = conn.cursor()
@@ -90,14 +85,12 @@ class DataBaseHandler:
             print(f"Ошибка при добавлении пользователя: {e}")
 
     def get_user(self, user_id: int) -> Tuple[int, str, str, str]:
-        """Получение данных пользователя по его ID."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
         return cursor.fetchone()
 
     def create_meeting(self, title: str, description: str, start_time: str, end_time: str, participants: List[int]) -> int:
-        """Создание новой встречи и добавление её в таблицу meetings."""
         try:
             conn = self.create_connection()
             cursor = conn.cursor()
@@ -108,7 +101,6 @@ class DataBaseHandler:
             meeting_id = cursor.lastrowid
             conn.commit()
 
-            # Добавление участников в таблицу meeting_participants
             for user_id in participants:
                 cursor.execute("""
                     INSERT INTO meeting_participants (meeting_id, user_id)
@@ -121,14 +113,12 @@ class DataBaseHandler:
             return None
 
     def get_meeting(self, meeting_id: int) -> Tuple[int, str, str, str, str]:
-        """Получение данных о встрече по ID."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM meetings WHERE id=?", (meeting_id,))
         return cursor.fetchone()
 
     def get_meetings_for_user(self, user_id: int) -> List[Tuple[int, str, str, str, str]]:
-        """Получение списка встреч для конкретного пользователя."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -140,7 +130,6 @@ class DataBaseHandler:
         return cursor.fetchall()
 
     def get_participants_for_meeting(self, meeting_id: int) -> List[Tuple[int, str, str, str]]:
-        """Получение списка участников для конкретной встречи."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -152,7 +141,6 @@ class DataBaseHandler:
         return cursor.fetchall()
 
     def update_statistics(self, user_id: int):
-        """Обновление статистики о количестве встреч, созданных пользователем."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -162,7 +150,6 @@ class DataBaseHandler:
         conn.commit()
 
     def get_user_statistics(self, user_id: int) -> int:
-        """Получение статистики по количеству встреч, созданных пользователем."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT meetings_created FROM statistics WHERE user_id=?", (user_id,))
@@ -170,48 +157,40 @@ class DataBaseHandler:
         return result[0] if result else 0
 
     def get_table_content(self, table_name: str) -> List[Tuple]:
-        """Получение всех данных из указанной таблицы."""
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute(f"SELECT * FROM {table_name}")
         return cursor.fetchall()
 
     def close_connection(self):
-        """Закрытие подключения к базе данных."""
         if hasattr(local, 'db_connection'):
             local.db_connection.close()
             print("Подключение к базе данных закрыто.")
 
 
-# Пример использования:
+
 if __name__ == "__main__":
     db_handler = DataBaseHandler()
 
-    # Пример добавления пользователя
     db_handler.add_user(12345, "Иван", "Иванов", "ivan_ivanov")
     
-    # Пример создания встречи
+ 
     meeting_id = db_handler.create_meeting(
         title="Совещание",
         description="Обсуждение важных вопросов",
         start_time="2024-12-10 14:00",
         end_time="2024-12-10 15:00",
-        participants=[12345]  # участник с ID 12345
+        participants=[12345]  
     )
 
-    # Пример обновления статистики
     db_handler.update_statistics(12345)
 
-    # Пример получения статистики
     print(f"Встречи создано: {db_handler.get_user_statistics(12345)}")
 
-    # Пример получения всех встреч для пользователя
     meetings = db_handler.get_meetings_for_user(12345)
     print("Встречи пользователя:", meetings)
 
-    # Пример получения всех участников встречи
     participants = db_handler.get_participants_for_meeting(meeting_id)
     print("Участники встречи:", participants)
 
-    # Закрытие подключения
     db_handler.close_connection()
