@@ -2,3 +2,4 @@ src/token.json
 src/__init__.py
 venv
 meetings.db
+src/credentials.json
