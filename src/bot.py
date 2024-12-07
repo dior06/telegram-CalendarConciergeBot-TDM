@@ -1,6 +1,5 @@
 import telebot 
 from telebot import types
-import database
 from database import DataBaseHandler
 from datetime import datetime, timedelta
 from google_calendar_integration import GoogleCalendarIntegration

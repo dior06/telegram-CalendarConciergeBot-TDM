@@ -1,18 +1,4 @@
-# Python
-__pycache__/
-*.py[cod]
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-
-# Virtual environments
-venv/
-env/
-
-# OS files
-.DS_Store
-Thumbs.db
-credentials.json
-token.json
+src/token.json
+src/__init__.py
+venv
+meetings.db

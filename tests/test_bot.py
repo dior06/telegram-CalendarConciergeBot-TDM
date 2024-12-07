@@ -1,4 +1,3 @@
-import pytest
 import src.bot as bot
 from unittest.mock import MagicMock
 

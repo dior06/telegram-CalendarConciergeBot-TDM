@@ -166,31 +166,3 @@ class DataBaseHandler:
         if hasattr(local, 'db_connection'):
             local.db_connection.close()
             print("Подключение к базе данных закрыто.")
-
-
-
-if __name__ == "__main__":
-    db_handler = DataBaseHandler()
-
-    db_handler.add_user(12345, "Иван", "Иванов", "ivan_ivanov")
-    
- 
-    meeting_id = db_handler.create_meeting(
-        title="Совещание",
-        description="Обсуждение важных вопросов",
-        start_time="2024-12-10 14:00",
-        end_time="2024-12-10 15:00",
-        participants=[12345]  
-    )
-
-    db_handler.update_statistics(12345)
-
-    print(f"Встречи создано: {db_handler.get_user_statistics(12345)}")
-
-    meetings = db_handler.get_meetings_for_user(12345)
-    print("Встречи пользователя:", meetings)
-
-    participants = db_handler.get_participants_for_meeting(meeting_id)
-    print("Участники встречи:", participants)
-
-    db_handler.close_connection()
