@@ -17,7 +17,7 @@ class GoogleCalendarIntegration:
 
     def authenticate(self):
         creds = None
-        if os.path.exists('src/token.json'):
+        if os.path.exists('token.json'):
             creds = self.load_credentials()
         
         if not creds or not creds.valid:
@@ -32,7 +32,7 @@ class GoogleCalendarIntegration:
 
     def load_credentials(self):
         try:
-            creds = Credentials.from_authorized_user_file('src/token.json', SCOPES)
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
         except Exception as e:
             logging.error(f"Ошибка загрузки токенов: {e}")
             creds = None
@@ -40,12 +40,12 @@ class GoogleCalendarIntegration:
 
     def get_new_credentials(self):
         flow = InstalledAppFlow.from_client_secrets_file(
-            'src/credentials.json', SCOPES)
+            'credentials.json', SCOPES)
         creds = flow.run_local_server(port=0)
         return creds
 
     def save_credentials(self, creds):
-        with open('src/token.json', 'w') as token:
+        with open('token.json', 'w') as token:
             token.write(creds.to_json())
 
     def create_event(self, summary, start_time, end_time, description=None, location=None, attendees=None):

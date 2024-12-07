@@ -1,5 +1,4 @@
-src/token.json
-src/__init__.py
+credentials.json
+token.json
 venv
 meetings.db
-src/credentials.json
