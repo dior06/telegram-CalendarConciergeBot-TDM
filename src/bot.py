@@ -1,9 +1,10 @@
-import telebot
+import telebot 
 from telebot import types
 import database
 from database import DataBaseHandler
 from datetime import datetime, timedelta
 from google_calendar_integration import GoogleCalendarIntegration
+import re  # Для валидации email
 
 # Инициализация базы данных и Google Calendar
 db_handler = DataBaseHandler()
@@ -12,7 +13,7 @@ google_calendar = GoogleCalendarIntegration()
 bot = telebot.TeleBot('7287404688:AAGFVPNVBsg9R6ASpRxp35wiK0la9T7IXhk')
 
 # Словарь для хранения ответов пользователей
-users_data = {}
+useransw = {}  #-------
 
 # Функция для приветствия
 def greeting(message) -> str:
@@ -20,141 +21,167 @@ def greeting(message) -> str:
     if message.from_user.last_name:
         username += ' ' + message.from_user.last_name
 
-    greeting_message: str = f"Салам Алейкум, <b>{username}</b>, что бы вы хотели сделать?"
-    return greeting_message
+    hello: str = f"Салам Алейкум, <b>{username}</b>, что бы вы хотели сделать?"
+    return hello
 
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def start_bot(message) -> None:
     greeting_message: str = greeting(message)
 
-    keyboard = types.InlineKeyboardMarkup()
-    key_init = types.InlineKeyboardButton(text='Создать встречу', callback_data='1')
-    keyboard.add(key_init)
-    key_chdata = types.InlineKeyboardButton(text='Изменить данные существующей встречи', callback_data='2')
-    keyboard.add(key_chdata)
-    key_chtime = types.InlineKeyboardButton(text='Изменить дату существующей встречи', callback_data='3')
-    keyboard.add(key_chtime)
-    key_stata = types.InlineKeyboardButton(text='Посмотреть статистику встреч', callback_data='4')
-    keyboard.add(key_stata)
+    n = types.InlineKeyboardMarkup()
+    strt = types.InlineKeyboardButton(text='Создать встречу', callback_data='1')
+    n.add(strt)
+    chnf = types.InlineKeyboardButton(text='Изменить данные существующей встречи', callback_data='2')
+    n.add(chnf)
+    chtm = types.InlineKeyboardButton(text='Изменить дату существующей встречи', callback_data='3')
+    n.add(chtm)
+    wtchsttcs = types.InlineKeyboardButton(text='Посмотреть статистику встреч', callback_data='4')
+    n.add(wtchsttcs)
 
-    bot.send_message(message.chat.id, greeting_message, parse_mode='html', reply_markup=keyboard)
+    bot.send_message(message.chat.id, greeting_message, parse_mode='html', reply_markup=n)
 
 # Обработчик callback'ов
 @bot.callback_query_handler(func=lambda call: True)
 def response(function_call) -> None:
     if function_call.message:
         if function_call.data == '1':
-            meeting_creation(function_call)
+            init_vstr(function_call)
         elif function_call.data == '2':
-            bot.send_message(function_call.message.chat.id, 'Изменение данных о встрече')
+            bot.send_message(function_call.message.chat.id, 'مغلق  ! Эта функция еще не готова ')
         elif function_call.data == '3':
-            bot.send_message(function_call.message.chat.id, 'Изменение даты встречи...')
+            bot.send_message(function_call.message.chat.id, '關閉! Эта функция еще не готова')
         elif function_call.data == '4':
-            bot.send_message(function_call.message.chat.id, 'Статистика')
+            bot.send_message(function_call.message.chat.id, 'སྒོ་བརྒྱབ། ! эта функция не готова')
 
-def meeting_creation(function_call) -> None:
-    chat_id = function_call.message.chat.id
-    users_data[chat_id] = {} 
-    bot.send_message(chat_id, 'Введите название встречи')
-    bot.register_next_step_handler(function_call.message, meeting_title)
+def init_vstr(function_call) -> None:
+    msg_idnt = function_call.message.chat.id
+    useransw[msg_idnt] = {} 
+    bot.send_message(msg_idnt, 'Название встречи ?')
+    bot.register_next_step_handler(function_call.message, nazw_vstr)
 
-def meeting_title(message):
-    users_data[message.chat.id]['answer1'] = message.text 
-    bot.send_message(message.chat.id, 'Описание встречи по-братски напиши')
-    bot.register_next_step_handler(message, meeting_description)
+def nazw_vstr(message):
+    useransw[message.chat.id]['uno'] = message.text 
+    bot.send_message(message.chat.id, 'Напишите описание встречи')
+    bot.register_next_step_handler(message, opsn_vstr)
 
-def meeting_description(message):
-    chat_id = message.chat.id
-    users_data[chat_id]['answer2'] = message.text
-    bot.send_message(chat_id, 'Участники?')
-    bot.register_next_step_handler(message, meeting_members)
+def opsn_vstr(message):
+    useransw[message.chat.id]['duo'] = message.text
+    bot.send_message(message.chat.id, 'Участники (почта) ?\nВведите email адреса участников, разделяя их запятыми или пробелами.')
+    bot.register_next_step_handler(message, uchastnik_vstr)
 
-def meeting_members(message):
-    users_data[message.chat.id]['answer3'] = message.text
+def uchastnik_vstr(message):
+    email_input = message.text
+    emails = parse_emails(email_input)
+    if not emails:
+        bot.send_message(message.chat.id, 'Неверный формат email адресов. Пожалуйста, попробуйте снова.')
+        bot.register_next_step_handler(message, uchastnik_vstr)
+        return
+    useransw[message.chat.id]['tree'] = emails
     bot.send_message(message.chat.id, 'Продолжительность (число минут) ?')
-    bot.register_next_step_handler(message, meeting_time)
+    bot.register_next_step_handler(message, vrm_vstr)
 
-def meeting_time(message):
-    try:
-        duration_minutes = int(message.text)
-        users_data[message.chat.id]['answer4'] = duration_minutes
-        bot.send_message(message.chat.id, 'Введите время начала встречи в формате час.минуты.день.месяц.год')
-        bot.register_next_step_handler(message, meeting_start_time)
-    except ValueError:
-        bot.send_message(message.chat.id, 'Нужно ввести число')
-        bot.register_next_step_handler(message, meeting_time)
+# Функция для парсинга и валидации email адресов
+def parse_emails(text):
+    # Разделяем по запятым или пробелам
+    raw_emails = re.split('[,\\s]+', text.strip())
+    # Простая валидация email
+    email_pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
+    valid_emails = [email for email in raw_emails if email_pattern.match(email)]
+    return valid_emails if valid_emails else None
+
+# время продолжительности встречи
+def vrm_vstr (message):
+    chat_id = message.chat.id
+    user_input = message.text
+
+    if not user_input:
+        prompt_error(chat_id)
+        return
+
+    duration = parse_duration(user_input)
+    if duration is not None:
+        useransw[chat_id]['quadro'] = duration
+        prompt_next_step(chat_id, 'Введите время начала встречи в формате YYYY-MM-DD HH:MM:SS', meeting_start_time)
+    else:
+        prompt_error(chat_id)
+
+def parse_duration(text):
+    if not text.strip().isdigit():
+        return None
+    else:
+        return int(text.strip())
+
+def prompt_error(chat_id):
+    bot.send_message(chat_id, 'Так не ясно. Нужно ввести число')
+    bot.register_next_step_handler_by_chat_id(chat_id, vrm_vstr)
+
+def prompt_next_step(chat_id, prompt_text, next_handler):
+    bot.send_message(chat_id, prompt_text)
+    bot.register_next_step_handler_by_chat_id(chat_id, next_handler)
 
 def meeting_start_time(message):
     chat_id = message.chat.id
-    users_data[chat_id]['answer5'] = message.text
-    answers = users_data[chat_id]
+    useransw[chat_id]['cinque'] = message.text
+    answers = useransw[chat_id]
     print(f"Ответы пользователя {chat_id}: {answers}")
 
-    title = answers['answer1']
-    description = answers['answer2']
-    participants = answers['answer3']
-    duration_minutes = answers['answer4']
-    start_time_input = answers['answer5']
+    nzvn = answers.get('uno')
+    opsn = answers.get('duo')
+    uchstnc = answers.get('tree')
+    dltlnst = answers.get('quadro')
+    start_time_input = answers.get('cinque')
     user_id = message.from_user.id
 
-    # Переводим строковое время в datetime
     try:
         start_time = datetime.strptime(start_time_input, '%Y-%m-%d %H:%M:%S')
     except ValueError:
-        bot.send_message(message.chat.id, 'Неверный формат времени. Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS')
+        bot.send_message(message.chat.id, 'Такая дата не подойдет. Пожалуйста, напишите дату в формате: YYYY-MM-DD HH:MM:SS')
         bot.register_next_step_handler(message, meeting_start_time)
         return
 
-    end_time = start_time + timedelta(minutes=duration_minutes)
+    end_time = start_time + timedelta(minutes=dltlnst)
     participants_list = [user_id]  # Пока что только текущий пользователь
 
     # Сохраняем встречу в базе данных
     meeting_id = db_handler.create_meeting(
-        title=title,
-        description=description,
+        title=nzvn,
+        description=opsn,
         start_time=start_time.isoformat(),
         end_time=end_time.isoformat(),
         participants=participants_list
     )
 
-    # Здесь нужно определить emails участников для календаря
-    attendees_emails = ["example@gmail.com"]  # Замените на реальные почты участников, если есть
+    # Получаем список email участников из useransw
+    attendees_emails = uchstnc  # Это список email адресов
 
     # Создаем событие в Google Calendar
     event = google_calendar.create_event(
-        summary=title,
-        description=description,
-        start_time=start_time,  # Передаем объект datetime
-        end_time=end_time,      # Передаем объект datetime
-        attendees=attendees_emails
+        summary=nzvn,
+        description=opsn,
+        start_time=start_time,  
+        end_time=end_time,      
+        attendees=attendees_emails  # Передаем список email адресов
     )
 
-    bot.send_message(chat_id, f'Встреча "{title}" успешно создана с идентификатором {meeting_id}.\nСобытие в календаре: {event.get("htmlLink")}')
+    if event:
+        bot.send_message(chat_id, f'Встреча "{nzvn}" успешно создана. Номер встречи: {meeting_id}.\nСсылка на встречу в календаре: {event.get("htmlLink")}')
+    else:
+        bot.send_message(chat_id, f'Не удалось создать событие в календаре.')
 
     # Очищаем данные пользователя
-    del users_data[chat_id]
+    del useransw[chat_id]
 
 # Обработчик команды /show_db
 @bot.message_handler(commands=['show_db'])
 def show_db_content(message):
-    try:
-        tables = ['users', 'meetings', 'meeting_participants', 'statistics'] 
-        response = ""
-
-        for table in tables:
-            content = db_handler.get_table_content(table)
-            response += f"Содержимое таблицы {table}:\n"
-            if content:
-                for row in content:
-                    response += f"{row}\n"
-            else:
-                response += "Нет данных.\n"
-            response += "\n"
-
-        bot.send_message(message.chat.id, response)
-    except Exception as e:
-        bot.send_message(message.chat.id, f"Ошибка при проверке базы данных: {str(e)}")
+    for I in ['users', 'meetings', 'meeting_participants', 'statistics']:
+        content = db_handler.get_table_content(I)
+        if content:
+            formatted_content = "\n".join([str(row) for row in content])
+            bot.send_message(message.chat.id, f"База данных :{I}:\n{formatted_content}\n")
+        else:
+            bot.send_message(message.chat.id, f"Данных в таблице {I} нет.\n")
 
 # Запуск бота
 bot.infinity_polling()
