@@ -4,18 +4,15 @@ import database
 from database import DataBaseHandler
 from datetime import datetime, timedelta
 from google_calendar_integration import GoogleCalendarIntegration
-import re  # Для валидации email
-
-# Инициализация базы данных и Google Calendar
+import re  
 db_handler = DataBaseHandler()
 google_calendar = GoogleCalendarIntegration()
 
 bot = telebot.TeleBot('7287404688:AAGFVPNVBsg9R6ASpRxp35wiK0la9T7IXhk')
 
-# Словарь для хранения ответов пользователей
-useransw = {}  #-------
 
-# Функция для приветствия
+useransw = {}  #ответы пользователя
+
 def greeting(message) -> str:
     username: str = message.from_user.first_name
     if message.from_user.last_name:
@@ -24,24 +21,23 @@ def greeting(message) -> str:
     hello: str = f"Салам Алейкум, <b>{username}</b>, что бы вы хотели сделать?"
     return hello
 
-# Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def start_bot(message) -> None:
-    greeting_message: str = greeting(message)
+    greet: str = greeting(message)
 
     n = types.InlineKeyboardMarkup()
-    strt = types.InlineKeyboardButton(text='Создать встречу', callback_data='1')
-    n.add(strt)
-    chnf = types.InlineKeyboardButton(text='Изменить данные существующей встречи', callback_data='2')
-    n.add(chnf)
-    chtm = types.InlineKeyboardButton(text='Изменить дату существующей встречи', callback_data='3')
-    n.add(chtm)
-    wtchsttcs = types.InlineKeyboardButton(text='Посмотреть статистику встреч', callback_data='4')
-    n.add(wtchsttcs)
+    start = types.InlineKeyboardButton(text='Создать встречу', callback_data='1')
+    n.add(start)
+    ch_inf = types.InlineKeyboardButton(text='Изменить данные существующей встречи', callback_data='2')
+    n.add(ch_inf)
+    ch_time = types.InlineKeyboardButton(text='Изменить дату существующей встречи', callback_data='3')
+    n.add(ch_time)
+    statistic = types.InlineKeyboardButton(text='Посмотреть статистику встреч', callback_data='4')
+    n.add(statistic)
 
-    bot.send_message(message.chat.id, greeting_message, parse_mode='html', reply_markup=n)
+    bot.send_message(message.chat.id, greet, parse_mode='html', reply_markup=n)
 
-# Обработчик callback'ов
+
 @bot.callback_query_handler(func=lambda call: True)
 def response(function_call) -> None:
     if function_call.message:
@@ -55,9 +51,9 @@ def response(function_call) -> None:
             bot.send_message(function_call.message.chat.id, 'སྒོ་བརྒྱབ། ! эта функция не готова')
 
 def init_vstr(function_call) -> None:
-    msg_idnt = function_call.message.chat.id
-    useransw[msg_idnt] = {} 
-    bot.send_message(msg_idnt, 'Название встречи ?')
+    msg_id = function_call.message.chat.id
+    useransw[msg_id] = {} 
+    bot.send_message(msg_id, 'Название встречи ?')
     bot.register_next_step_handler(function_call.message, nazw_vstr)
 
 def nazw_vstr(message):
@@ -81,16 +77,14 @@ def uchastnik_vstr(message):
     bot.send_message(message.chat.id, 'Продолжительность (число минут) ?')
     bot.register_next_step_handler(message, vrm_vstr)
 
-# Функция для парсинга и валидации email адресов
+
 def parse_emails(text):
-    # Разделяем по запятым или пробелам
     raw_emails = re.split('[,\\s]+', text.strip())
-    # Простая валидация email
     email_pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
     valid_emails = [email for email in raw_emails if email_pattern.match(email)]
     return valid_emails if valid_emails else None
 
-# время продолжительности встречи
+
 def vrm_vstr (message):
     chat_id = message.chat.id
     user_input = message.text
@@ -126,10 +120,10 @@ def meeting_start_time(message):
     answers = useransw[chat_id]
     print(f"Ответы пользователя {chat_id}: {answers}")
 
-    nzvn = answers.get('uno')
-    opsn = answers.get('duo')
-    uchstnc = answers.get('tree')
-    dltlnst = answers.get('quadro')
+    name = answers.get('uno')
+    descr = answers.get('duo')
+    guests = answers.get('tree')
+    dur = answers.get('quadro')
     start_time_input = answers.get('cinque')
     user_id = message.from_user.id
 
@@ -140,39 +134,34 @@ def meeting_start_time(message):
         bot.register_next_step_handler(message, meeting_start_time)
         return
 
-    end_time = start_time + timedelta(minutes=dltlnst)
-    participants_list = [user_id]  # Пока что только текущий пользователь
+    end_time = start_time + timedelta(minutes=dur)
+    participants_list = [user_id]  
 
-    # Сохраняем встречу в базе данных
     meeting_id = db_handler.create_meeting(
-        title=nzvn,
-        description=opsn,
+        title=name,
+        description=descr,
         start_time=start_time.isoformat(),
         end_time=end_time.isoformat(),
         participants=participants_list
     )
 
-    # Получаем список email участников из useransw
-    attendees_emails = uchstnc  # Это список email адресов
+    attendees_emails = guests 
 
-    # Создаем событие в Google Calendar
     event = google_calendar.create_event(
-        summary=nzvn,
-        description=opsn,
+        summary=name,
+        description=descr,
         start_time=start_time,  
         end_time=end_time,      
-        attendees=attendees_emails  # Передаем список email адресов
+        attendees=attendees_emails  
     )
 
     if event:
-        bot.send_message(chat_id, f'Встреча "{nzvn}" успешно создана. Номер встречи: {meeting_id}.\nСсылка на встречу в календаре: {event.get("htmlLink")}')
+        bot.send_message(chat_id, f'Встреча "{name}" успешно создана. Номер встречи: {meeting_id}.\nСсылка на встречу в календаре: {event.get("htmlLink")}')
     else:
         bot.send_message(chat_id, f'Не удалось создать событие в календаре.')
 
-    # Очищаем данные пользователя
     del useransw[chat_id]
 
-# Обработчик команды /show_db
 @bot.message_handler(commands=['show_db'])
 def show_db_content(message):
     for I in ['users', 'meetings', 'meeting_participants', 'statistics']:
@@ -183,5 +172,4 @@ def show_db_content(message):
         else:
             bot.send_message(message.chat.id, f"Данных в таблице {I} нет.\n")
 
-# Запуск бота
 bot.infinity_polling()
