@@ -1,3 +1,4 @@
+from unittest import mock
 import src.bot as bot
 from unittest.mock import MagicMock
 
@@ -36,92 +37,106 @@ def test_responce_callback_creation(mocker):
     bot.response(function_call)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Введите название встречи' in args
+    assert 'Название встречи ?' in args
 
 
-def test_meeting_creation(mocker):
+def test_init_vstr(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     function_call = MagicMock()
     function_call.message.chat.id = 123
 
-    bot.meeting_creation(function_call)
+    bot.init_vstr(function_call)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Введите название встречи' in args
+    assert 'Название встречи ?' in args
 
 
-def test_meeting_title(mocker):
+def test_nazw_vstr(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     message = MagicMock()
     message.chat.id = 123
     message.text = 'Новая встреча'
 
-    bot.meeting_title(message)
+    bot.nazw_vstr(message)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Описание встречи по-братски напиши' in args
+    assert 'Напишите описание встречи' in args
 
 
-def test_meeting_description(mocker):
+def test_opsn_vstr(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     message = MagicMock()
     message.chat.id = 123
     message.text = 'Описание для встречи'
 
-    bot.meeting_description(message)
+    bot.opsn_vstr(message)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Участники?' in args
+    assert 'Участники (почта)?\nВведите e-mail адреса участников, разделяя их запятыми или пробелами.' in args
 
 
-def test_meeting_members(mocker):
+def test_uchastnik_vstr(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     message = MagicMock()
     message.chat.id = 123
-    message.text = 'user1, user2'
+    message.text = 'user1@example.com, user2@anotherexample.com'
 
-    bot.meeting_members(message)
+    bot.uchastnik_vstr(message)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Продолжительность' in args[1]
+    assert 'Продолжительность (число минут)?' in args[1]
 
 
-def test_meeting_time_correct(mocker):
+def test_vrm_vstr(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     message = MagicMock()
     message.chat.id = 123
     message.text = '30'
 
-    bot.meeting_time(message)
+    bot.vrm_vstr(message)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Введите время начала встречи' in args[1]
+    assert 'Введите время начала встречи в формате DD-MM HH:MM' in args[1]
 
 
-def test_meeting_time_incorrect(mocker):
+def test_vrm_vstr_incorrect(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     message = MagicMock()
     message.chat.id = 123
     message.text = 'abc'
 
-    bot.meeting_time(message)
+    bot.vrm_vstr(message)
     bot_mock.send_message.assert_called_once()
     args, kwargs = bot_mock.send_message.call_args
-    assert 'Нужно ввести число' in args[1]
+    assert 'Так не ясно. Нужно ввести число (количество минут).' in args[1]
 
 
 def test_show_db_content(mocker):
     bot_mock = mocker.patch('src.bot.bot')
     db_handler_mock = mocker.patch('src.bot.db_handler')
-    db_handler_mock.get_table_content.return_value = [('id', 'name', '2024-01-01', '2024-01-02')]
+
+    db_handler_mock.get_table_content.side_effect = [
+        [('id1', 'name1', '2024-01-01', '2024-01-02')],
+        [('id2', 'name2', '2024-02-01', '2024-02-02')],
+        [],
+        [('id4', 'name4', '2024-04-01', '2024-04-02')],
+    ]
 
     message = MagicMock()
     message.chat.id = 123
 
     bot.show_db_content(message)
-    bot_mock.send_message.assert_called_once()
-    args, kwargs = bot_mock.send_message.call_args
-    assert 'Содержимое таблицы' in args[1]
+
+    assert bot_mock.send_message.call_count == 4
+
+    expected_calls = [
+        mocker.call(message.chat.id, "Таблица users:\n('id1', 'name1', '2024-01-01', '2024-01-02')\n"),
+        mocker.call(message.chat.id, "Таблица meetings:\n('id2', 'name2', '2024-02-01', '2024-02-02')\n"),
+        mocker.call(message.chat.id, 'Данных в таблице meeting_participants нет.\n'),
+        mocker.call(message.chat.id, "Таблица statistics:\n('id4', 'name4', '2024-04-01', '2024-04-02')\n"),
+    ]
+
+    bot_mock.send_message.assert_has_calls(expected_calls, any_order=False)
 
 
 def test_meeting_start_time_correct_format(mocker):
@@ -130,7 +145,7 @@ def test_meeting_start_time_correct_format(mocker):
 
     message = MagicMock()
     message.chat.id = 123
-    message.text = '2024-12-07 15:30:00'
+    message.text = '23-12 15:30'
     message.from_user.id = 1
 
     user_data = {
