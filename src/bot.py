@@ -11,7 +11,7 @@ db_handler = DataBaseHandler()
 google_calendar = GoogleCalendarIntegration()
 
 
-bot = telebot.TeleBot('7287404688:AAGFVPNVBsg9R6ASpRxp35wiK0la9T7IXhk')
+bot = telebot.TeleBot('BOT')
 
 useransw = {}
 
