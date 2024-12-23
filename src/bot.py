@@ -141,6 +141,7 @@ def meeting_start_time(message):
 
     try:
         start_time = datetime.strptime(start_time_input, '%d-%m %H:%M')
+        start_time = start_time.replace(year=datetime.now().year)
     except ValueError:
         bot.send_message(
             message.chat.id,
