@@ -8,13 +8,14 @@ local = threading.local()
 class DataBaseHandler:
     def __init__(self, db_file='meetings.db'):
         self.db_file = db_file
-        self.create_tables()  
+        self.create_tables()
 
     def create_connection(self):
+
         if not hasattr(local, 'db_connection'):
             try:
-                local.db_connection = sqlite3.connect(self.db_file, check_same_thread=False)  
-                local.db_connection.row_factory = sqlite3.Row  
+                local.db_connection = sqlite3.connect(self.db_file, check_same_thread=False)
+                local.db_connection.row_factory = sqlite3.Row
                 print(f"Подключение к базе данных установлено: {self.db_file}")
             except Error as e:
                 print(f"Ошибка подключения к базе данных: {e}")
@@ -73,94 +74,136 @@ class DataBaseHandler:
             print(f"Ошибка при создании таблиц: {e}")
 
     def add_user(self, user_id: int, first_name: str, last_name: str, username: str):
+
         try:
             conn = self.create_connection()
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO users (user_id, first_name, last_name, username)
                 VALUES (?, ?, ?, ?)
-            """, (user_id, first_name, last_name, username))
+                """,
+                (user_id, first_name, last_name, username)
+            )
             conn.commit()
         except Error as e:
             print(f"Ошибка при добавлении пользователя: {e}")
 
-    def get_user(self, user_id: int) -> Tuple[int, str, str, str]:
+    def get_user(self, user_id: int):
+
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
         return cursor.fetchone()
 
-    def create_meeting(self, title: str, description: str, start_time: str, end_time: str, participants: List[int]) -> int:
+    def create_meeting(
+        self,
+        title: str,
+        description: str,
+        start_time: str,
+        end_time: str,
+        participants: List[int]
+    ) -> int:
+
         try:
             conn = self.create_connection()
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO meetings (title, description, start_time, end_time)
                 VALUES (?, ?, ?, ?)
-            """, (title, description, start_time, end_time))
+                """,
+                (title, description, start_time, end_time)
+            )
             meeting_id = cursor.lastrowid
             conn.commit()
 
             for user_id in participants:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO meeting_participants (meeting_id, user_id)
                     VALUES (?, ?)
-                """, (meeting_id, user_id))
+                    """,
+                    (meeting_id, user_id)
+                )
             conn.commit()
+
             return meeting_id
+
         except Error as e:
             print(f"Ошибка при создании встречи: {e}")
             return None
 
-    def get_meeting(self, meeting_id: int) -> Tuple[int, str, str, str, str]:
+    def get_meeting(self, meeting_id: int):
         conn = self.create_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM meetings WHERE id=?", (meeting_id,))
         return cursor.fetchone()
 
-    def get_meetings_for_user(self, user_id: int) -> List[Tuple[int, str, str, str, str]]:
+    def get_meetings_for_user(self, user_id: int) -> List[sqlite3.Row]:
         conn = self.create_connection()
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT m.id, m.title, m.description, m.start_time, m.end_time
             FROM meetings m
             JOIN meeting_participants mp ON m.id = mp.meeting_id
             WHERE mp.user_id=?
-        """, (user_id,))
+            """,
+            (user_id,)
+        )
         return cursor.fetchall()
 
-    def get_participants_for_meeting(self, meeting_id: int) -> List[Tuple[int, str, str, str]]:
+    def get_participants_for_meeting(self, meeting_id: int) -> List[sqlite3.Row]:
         conn = self.create_connection()
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT u.user_id, u.first_name, u.last_name, u.username
             FROM users u
             JOIN meeting_participants mp ON u.user_id = mp.user_id
             WHERE mp.meeting_id=?
-        """, (meeting_id,))
+            """,
+            (meeting_id,)
+        )
         return cursor.fetchall()
 
     def update_statistics(self, user_id: int):
         conn = self.create_connection()
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO statistics (user_id, meetings_created)
-            VALUES (?, COALESCE((SELECT meetings_created FROM statistics WHERE user_id=?), 0) + 1)
-        """, (user_id, user_id))
+            VALUES (
+                ?,
+                COALESCE((SELECT meetings_created FROM statistics WHERE user_id=?), 0) + 1
+            )
+            """,
+            (user_id, user_id)
+        )
         conn.commit()
 
     def get_user_statistics(self, user_id: int) -> int:
         conn = self.create_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT meetings_created FROM statistics WHERE user_id=?", (user_id,))
+        cursor.execute(
+            "SELECT meetings_created FROM statistics WHERE user_id=?",
+            (user_id,)
+        )
         result = cursor.fetchone()
         return result[0] if result else 0
 
     def get_table_content(self, table_name: str) -> List[Tuple]:
+
         conn = self.create_connection()
         cursor = conn.cursor()
-        cursor.execute(f"SELECT * FROM {table_name}")
-        return cursor.fetchall()
+        query = f"SELECT * FROM {table_name}"
+        try:
+            cursor.execute(query)
+            return cursor.fetchall()
+        except Error as e:
+            print(f"Ошибка при выборке из {table_name}: {e}")
+            return []
 
     def close_connection(self):
         if hasattr(local, 'db_connection'):
